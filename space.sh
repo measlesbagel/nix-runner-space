@@ -18,7 +18,7 @@ else
   dotnet=(/usr/share/dotnet)
 fi
 
-# Ordered by space freed per inode, since deletion time follows inode count.
+# Picked for space freed per inode, since deletion time follows inode count.
 # Paths an image lacks are skipped.
 targets=(
   /usr/local/bin/{minikube,bicep,packer,stack,helm,azcopy,kustomize,kind}
@@ -51,10 +51,13 @@ paths=()
 for path in "${targets[@]}"; do
   if [[ -e "${path}" ]]; then paths+=("${path}"); fi
 done
-# Cold deletion waits on disk reads of directories and inodes, so many rm
-# processes at once keep more reads in flight.
-sudo find "${paths[@]}" -mindepth 3 -maxdepth 3 -print0 |
-  sudo xargs -0 -r -P 32 -n 16 rm -rf
-sudo rm -rf "${paths[@]}"
+# With no paths, find would search the working directory: the checkout.
+if ((${#paths[@]})); then
+  # Cold deletion waits on disk reads of directories and inodes, so many rm
+  # processes at once keep more reads in flight.
+  sudo find "${paths[@]}" -mindepth 3 -maxdepth 3 -print0 |
+    sudo xargs -0 -r -P 32 -n 16 rm -rf
+  sudo rm -rf "${paths[@]}"
+fi
 after=$(df -B1 --output=avail / | tail -n 1)
 echo "Freed $(((after - before) >> 30)) GiB. / has $((after >> 30)) GiB free."
