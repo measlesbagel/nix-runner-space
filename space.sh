@@ -1,16 +1,44 @@
 #!/usr/bin/env bash
 # Deletes preinstalled toolchains that free the most space per second, so /nix
-# and the Nix build directory (/nix/var/nix/builds) get it on /.
+# and the Nix build directory (/nix/var/nix/builds) get it on /. Swap and
+# Docker stay.
 set -euo pipefail
+shopt -s nullglob
 
 if [[ -e /nix ]]; then
   echo "::error::/nix exists. Run nix-runner-space before installing Nix."
   exit 1
 fi
 
+# Ordered by space freed per inode, since deletion time follows inode count.
+# Paths an image lacks are skipped.
+targets=(
+  /usr/local/bin/{minikube,bicep,packer,stack,helm,azcopy,kustomize,kind}
+  /opt/hostedtoolcache/copilot-cli
+  /opt/pipelinesagent-cache
+  /home/runner/.rustup
+  /etc/skel/.rustup
+  /opt/google
+  /usr/local/share/powershell
+  /opt/microsoft
+  /usr/share/swift
+  /usr/local/share/chromium
+  /usr/lib/firefox
+  /usr/lib/jvm
+  /home/packer
+  /home/runner/.dotnet
+  /usr/local/lib/android/sdk/build-tools
+  /usr/local/lib/android/sdk/cmdline-tools
+  /usr/local/.ghcup
+  /usr/local/lib/android/sdk/ndk
+  /usr/share/gradle-*
+  /usr/share/az_*
+  /usr/share/dotnet
+)
+
 before=$(df -B1 --output=avail / | tail -n 1)
 paths=()
-for path in /usr/share/swift /usr/local/.ghcup /usr/share/dotnet; do
+for path in "${targets[@]}"; do
   if [[ -e "${path}" ]]; then paths+=("${path}"); fi
 done
 # Cold deletion waits on disk reads of directories and inodes, so many rm
