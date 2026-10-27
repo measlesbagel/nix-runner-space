@@ -1,0 +1,7 @@
+name: noop
+description: The sensitivity control. It does nothing, so its time is the harness's step overhead.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: "true"

@@ -1,0 +1,140 @@
+name: bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: JSON list of variants to sample
+        default: '["none","nbn-cleave-bg","nbn-cleave-fg","nbn-rampage-bg","nbn-rampage-fg","this"]'
+      samples:
+        description: JSON list of sample numbers per variant and arch
+        default: "[1,2,3,4,5]"
+      ref:
+        description: Commit of this repo that variant "ref" samples, to compare a change with the version before it
+        default: ""
+  pull_request:
+    paths:
+      - action.yml
+      - "*.sh"
+      - bench/**
+      - .github/workflows/bench.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # nothing-but-nix v10, the baseline.
+  NBN_REF: 687c797a730352432950c707ab493fcc951818d7
+
+jobs:
+  sample:
+    name: Sample ${{ matrix.variant }} ${{ matrix.arch }} ${{ matrix.n }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    # A failing baseline is data for the score, not a failed bench.
+    continue-on-error: ${{ matrix.variant != 'this' }}
+    strategy:
+      fail-fast: false
+      # n is outermost so each wave of jobs mixes every variant.
+      matrix:
+        n: ${{ fromJSON(inputs.samples || '[1,2,3,4,5]') }}
+        variant: ${{ fromJSON(inputs.variants || '["none","nbn-cleave-bg","nbn-cleave-fg","nbn-rampage-bg","nbn-rampage-fg","this"]') }}
+        arch: [x64, arm64]
+    env:
+      VARIANT: ${{ matrix.variant }}
+      ARCH: ${{ matrix.arch }}
+      SAMPLE: ${{ matrix.n }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: startsWith(matrix.variant, 'nbn-')
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: wimpysworld/nothing-but-nix
+          ref: ${{ env.NBN_REF }}
+          path: .nbn
+          persist-credentials: false
+      - if: startsWith(matrix.variant, 'nbn-')
+        run: bench/strip-post.sh .nbn/action.yml
+      - if: matrix.variant == 'ref'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          path: .ref
+          persist-credentials: false
+
+      # The baseline can only load from the workspace, so every measured
+      # variant does, to give each the same step overhead.
+      - name: Start clock
+        run: echo "BENCH_T0=$(date +%s.%N)" >> "$GITHUB_ENV"
+      - if: matrix.variant == 'none'
+        uses: ./bench/noop # zizmor: ignore[self-repository]
+      - if: startsWith(matrix.variant, 'nbn-')
+        uses: ./.nbn # zizmor: ignore[self-repository]
+        with:
+          hatchet-protocol: ${{ contains(matrix.variant, 'rampage') && 'rampage' || 'cleave' }}
+          witness-carnage: ${{ endsWith(matrix.variant, '-fg') }}
+      - if: matrix.variant == 'this'
+        uses: ./ # zizmor: ignore[self-repository]
+      - if: matrix.variant == 'ref'
+        uses: ./.ref # zizmor: ignore[self-repository]
+      - name: Stop clock
+        run: bench/measure.sh
+
+      - id: install
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - run: bench/mark.sh installed
+      - id: hello
+        run: |
+          nix build nixpkgs#hello
+          ./result/bin/hello
+      - id: gate
+        run: bench/gate.sh
+      - run: bench/mark.sh gated
+      - name: Record gate
+        if: always()
+        env:
+          INSTALL: ${{ steps.install.outcome }}
+          HELLO: ${{ steps.hello.outcome }}
+          GATE: ${{ steps.gate.outcome }}
+        run: |
+          sample=$RUNNER_TEMP/bench/sample.json
+          mkdir -p "$RUNNER_TEMP/bench"
+          [ -f "$sample" ] || jq -n '{variant: env.VARIANT, arch: env.ARCH, n: (env.SAMPLE | tonumber)}' > "$sample"
+          jq '.gate.steps = {install: env.INSTALL, hello: env.HELLO, gate: env.GATE}
+            | .gate.ok = (.gate.steps | all(. == "success"))' "$sample" > "$sample.new"
+          mv "$sample.new" "$sample"
+          cat "$sample"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sample-${{ matrix.variant }}-${{ matrix.arch }}-${{ matrix.n }}
+          path: ${{ runner.temp }}/bench/sample.json
+
+  bench:
+    name: Bench
+    needs: sample
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sample-*
+          path: samples
+      - run: bench/score.sh samples | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results
+          path: samples
+      - name: Every sample of this action ran
+        if: needs.sample.result != 'success'
+        run: exit 1
