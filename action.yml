@@ -1,0 +1,7 @@
+name: nix-runner-space
+description: Free disk space for Nix on GitHub-hosted Ubuntu runners. Run it before installing Nix.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: '"$GITHUB_ACTION_PATH/space.sh"'
