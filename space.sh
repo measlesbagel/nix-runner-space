@@ -14,6 +14,7 @@ fi
 # Paths an image lacks are skipped.
 targets=(
   /usr/local/bin/{minikube,bicep,packer,stack,helm,azcopy,kustomize,kind}
+  /usr/local/lib/android/sdk/platforms/*/android.jar
   /opt/hostedtoolcache/copilot-cli
   /opt/pipelinesagent-cache
   /home/runner/.rustup
@@ -27,6 +28,7 @@ targets=(
   /usr/lib/jvm
   /home/packer
   /home/runner/.dotnet
+  /etc/skel/.dotnet
   /usr/local/lib/android/sdk/build-tools
   /usr/local/lib/android/sdk/cmdline-tools
   /usr/local/.ghcup
