@@ -13,12 +13,12 @@ jq -r --argjson samples "${#files[@]}" '
   def range(x): "\(f(x.med)) [\(f(x.min))–\(f(x.max))]";
   "Samples: \($samples). Failed or incomplete: \(.failed | length).",
   "",
-  "u = -0.6 ln T + 0.4 ln S; score = u - u(baseline). The baseline is the nbn-* variant with the highest u whose samples all passed the gate. [lo, hi] pairs worst and best samples.",
+  "u = -0.6 ln T + 0.4 ln S; score = u - u(baseline). Per arch, the baseline is the nbn-* variant with the highest u whose samples all passed the gate and whose median S beats the no-op'"'"'s. Its median S is the floor; a variant below it gets no score (-). [lo, hi] pairs worst and best samples.",
   "",
-  "| arch | variant | n | gate ok | T s med [min–max] | S GiB med [min–max] | write MiB/s | score [lo, hi] | baseline | images |",
+  "| arch | variant | n | gate ok | T s med [min–max] | S GiB med [min–max] | write MiB/s | score [lo, hi] | baseline (floor GiB) | images |",
   "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   (.cells | sort_by(.arch, .variant)[] |
-    "| \(.arch) | \(.variant) | \(.n) | \(.gate_ok) | \(range(.t)) | \(range(.s)) | \(f(.write_mibps.med)) | \(f(.score)) [\(f(.lo)), \(f(.hi))] | \(.baseline // "-") | \(.images | join(" ")) |"),
+    "| \(.arch) | \(.variant) | \(.n) | \(.gate_ok) | \(range(.t)) | \(range(.s)) | \(f(.write_mibps.med)) | \(f(.score)) [\(f(.lo)), \(f(.hi))] | \(.baseline // "-") (\(f(.floor))) | \(.images | join(" ")) |"),
   "",
   "| variant | overall score [lo, hi] |",
   "| --- | --- |",

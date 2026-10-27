@@ -12,6 +12,9 @@ on:
       ref:
         description: Commit of this repo that variant "ref" samples, to compare a change with the version before it
         default: ""
+      write_cap_gib:
+        description: GiB cap on the gate's write; none writes all of S - 4
+        default: "40"
   pull_request:
     paths:
       - action.yml
@@ -94,6 +97,8 @@ jobs:
           nix build nixpkgs#hello
           ./result/bin/hello
       - id: gate
+        env:
+          GATE_CAP_GIB: ${{ inputs.write_cap_gib || '40' }}
         run: bench/gate.sh
       - run: bench/mark.sh gated
       - name: Record gate
