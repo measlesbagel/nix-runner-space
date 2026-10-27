@@ -9,11 +9,14 @@ if [[ -e /nix ]]; then
 fi
 
 before=$(df -B1 --output=avail / | tail -n 1)
-pids=()
+paths=()
 for path in /usr/share/swift /usr/local/.ghcup /usr/share/dotnet; do
-  sudo rm -rf "${path}" &
-  pids+=($!)
+  if [[ -e "${path}" ]]; then paths+=("${path}"); fi
 done
-for pid in "${pids[@]}"; do wait "${pid}"; done
+# Cold deletion waits on disk reads of directories and inodes, so many rm
+# processes at once keep more reads in flight.
+sudo find "${paths[@]}" -mindepth 3 -maxdepth 3 -print0 |
+  sudo xargs -0 -r -P 32 -n 16 rm -rf
+sudo rm -rf "${paths[@]}"
 after=$(df -B1 --output=avail / | tail -n 1)
 echo "Freed $(((after - before) >> 30)) GiB. / has $((after >> 30)) GiB free."
