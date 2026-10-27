@@ -10,6 +10,14 @@ if [[ -e /nix ]]; then
   exit 1
 fi
 
+# arm has room to keep the .NET SDK, whose 47k inodes are the slowest space
+# on the list. x64 needs that space.
+if [[ "$(uname -m)" == aarch64 ]]; then
+  dotnet=(/usr/share/dotnet/shared /usr/share/dotnet/packs)
+else
+  dotnet=(/usr/share/dotnet)
+fi
+
 # Ordered by space freed per inode, since deletion time follows inode count.
 # Paths an image lacks are skipped.
 targets=(
@@ -35,7 +43,7 @@ targets=(
   /usr/local/lib/android/sdk/ndk
   /usr/share/gradle-*
   /usr/share/az_*
-  /usr/share/dotnet
+  "${dotnet[@]}"
 )
 
 before=$(df -B1 --output=avail / | tail -n 1)
